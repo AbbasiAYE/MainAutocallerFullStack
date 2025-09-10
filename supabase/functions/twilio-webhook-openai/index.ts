@@ -206,7 +206,7 @@ Deno.serve(async (req: Request) => {
               'Content-Type': 'application/json',
             },
             body: JSON.stringify({
-              model: 'tts-1',
+              model: 'gpt-4o-mini-tts',
               input: aiReply,
               voice: 'nova', // Female voice that works well for Swedish
               response_format: 'mp3',
