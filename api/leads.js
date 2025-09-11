@@ -1,9 +1,26 @@
-import { createClient } from '@supabase/supabase-js';
+import pkg from 'pg';
+const { Pool } = pkg;
 
-const supabase = createClient(
-  process.env.VITE_SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY
-);
+// Create a connection pool
+let pool;
+
+function getPool() {
+  if (!pool) {
+    const databaseUrl = process.env.DATABASE_URL;
+    
+    if (!databaseUrl) {
+      throw new Error('DATABASE_URL environment variable is not set');
+    }
+
+    pool = new Pool({
+      connectionString: databaseUrl,
+      ssl: {
+        rejectUnauthorized: false
+      }
+    });
+  }
+  return pool;
+}
 
 export default async function handler(req, res) {
   // Enable CORS
@@ -16,21 +33,14 @@ export default async function handler(req, res) {
   }
 
   try {
+    const dbPool = getPool();
+
     if (req.method === 'GET') {
-      const { data, error } = await supabase
-        .from('leads')
-        .select('*')
-        .order('created_at', { ascending: false });
+      // Get all leads ordered by created_at DESC
+      const query = 'SELECT * FROM leads ORDER BY created_at DESC';
+      const result = await dbPool.query(query);
 
-      if (error) {
-        console.error('Database error:', error);
-        return res.status(500).json({ 
-          error: 'Database error', 
-          details: error.message 
-        });
-      }
-
-      return res.status(200).json(data || []);
+      return res.status(200).json(result.rows);
     }
 
     if (req.method === 'POST') {
@@ -53,26 +63,37 @@ export default async function handler(req, res) {
         });
       }
 
-      const { data, error } = await supabase
-        .from('leads')
-        .insert([{ name, phone, email, status }])
-        .select()
-        .single();
+      // Insert new lead
+      const insertQuery = `
+        INSERT INTO leads (name, phone, email, status, created_at) 
+        VALUES ($1, $2, $3, $4, NOW()) 
+        RETURNING *
+      `;
+      const values = [name, phone, email, status];
+      const result = await dbPool.query(insertQuery, values);
 
-      if (error) {
-        console.error('Database insert error:', error);
-        return res.status(500).json({ 
-          error: 'Failed to create lead', 
-          details: error.message 
-        });
-      }
-
-      return res.status(201).json(data);
+      return res.status(201).json(result.rows[0]);
     }
 
     return res.status(405).json({ error: 'Method not allowed' });
   } catch (error) {
-    console.error('API error:', error);
+    console.error('Database error:', error);
+    
+    // Handle specific database errors
+    if (error.code === 'ENOTFOUND') {
+      return res.status(500).json({ 
+        error: 'Database connection failed', 
+        details: 'Could not connect to the database. Please check DATABASE_URL.' 
+      });
+    }
+    
+    if (error.code === '23505') { // Unique constraint violation
+      return res.status(400).json({ 
+        error: 'Duplicate entry', 
+        details: 'A lead with this email already exists' 
+      });
+    }
+
     return res.status(500).json({ 
       error: 'Internal server error', 
       details: error.message 
