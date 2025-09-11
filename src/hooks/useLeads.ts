@@ -12,10 +12,9 @@ export function useLeads() {
       setLoading(true);
       setError(null);
       
-      const apiUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/leads`;
+      const apiUrl = `/api/leads`;
       const response = await fetch(apiUrl, {
         headers: {
-          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
           'Content-Type': 'application/json',
         },
       });
@@ -36,11 +35,10 @@ export function useLeads() {
   const createLead = async (leadData: CreateLeadRequest): Promise<Lead> => {
     try {
       setError(null);
-      const apiUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/leads`;
+      const apiUrl = `/api/leads`;
       const response = await fetch(apiUrl, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify(leadData),
@@ -63,11 +61,10 @@ export function useLeads() {
 
   const initiateCallElevenLabs = async (leadId: string): Promise<{ success: boolean; message: string; leadName?: string; leadPhone?: string; callSid?: string; ttsProvider?: string }> => {
     try {
-      const apiUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/call-elevenlabs/${leadId}`;
+      const apiUrl = `/api/call-elevenlabs/${leadId}`;
       const response = await fetch(apiUrl, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
           'Content-Type': 'application/json',
         },
       });
@@ -93,11 +90,10 @@ export function useLeads() {
 
   const initiateCallOpenAI = async (leadId: string): Promise<{ success: boolean; message: string; leadName?: string; leadPhone?: string; callSid?: string; ttsProvider?: string }> => {
     try {
-      const apiUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/call-openai/${leadId}`;
+      const apiUrl = `/api/call-openai/${leadId}`;
       const response = await fetch(apiUrl, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
           'Content-Type': 'application/json',
         },
       });
@@ -123,11 +119,10 @@ export function useLeads() {
 
   const initiateTestCall = async (leadId: string): Promise<{ success: boolean; message: string; leadName?: string; leadPhone?: string; callSid?: string; callType?: string }> => {
     try {
-      const apiUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/call-test/${leadId}`;
+      const apiUrl = `/api/call-test/${leadId}`;
       const response = await fetch(apiUrl, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
           'Content-Type': 'application/json',
         },
       });
@@ -148,11 +143,10 @@ export function useLeads() {
 
   const initiateCall = async (leadId: string): Promise<{ success: boolean; message: string; leadName?: string; leadPhone?: string }> => {
     try {
-      const apiUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/call/${leadId}`;
+      const apiUrl = `/api/call/${leadId}`;
       const response = await fetch(apiUrl, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
           'Content-Type': 'application/json',
         },
       });

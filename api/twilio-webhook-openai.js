@@ -1,104 +1,63 @@
-import { createClient } from 'npm:@supabase/supabase-js@2';
+import { createClient } from '@supabase/supabase-js';
+import FormData from 'form-data';
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
-};
+const supabase = createClient(
+  process.env.VITE_SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY
+);
 
-interface TwilioWebhookRequest {
-  CallSid: string;
-  From: string;
-  To: string;
-  CallStatus: string;
-  Direction: string;
-  RecordingUrl?: string;
-  SpeechResult?: string;
-  Confidence?: string;
-}
+export default async function handler(req, res) {
+  // Enable CORS
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
 
-Deno.serve(async (req: Request) => {
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end();
+  }
+
+  if (req.method !== 'POST') {
+    return res.status(405).send('Method not allowed');
+  }
+
   try {
-    // Handle CORS preflight requests
-    if (req.method === 'OPTIONS') {
-      return new Response(null, { 
-        headers: corsHeaders,
-        status: 200 
-      });
-    }
-
-    if (req.method !== 'POST') {
-      return new Response(
-        'Method not allowed',
-        {
-          headers: { ...corsHeaders, 'Content-Type': 'text/plain' },
-          status: 405,
-        }
-      );
-    }
-
     // Get environment variables
-    const openaiApiKey = Deno.env.get('OPENAI_API_KEY');
-    const supabaseUrl = Deno.env.get('SUPABASE_URL');
-    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
-    const appUrl = Deno.env.get('APP_URL') || supabaseUrl;
+    const openaiApiKey = process.env.OPENAI_API_KEY;
+    const appUrl = process.env.APP_URL || `https://${req.headers.host}`;
 
     console.log('Environment check:', {
       hasOpenAI: !!openaiApiKey,
-      hasSupabase: !!supabaseUrl,
-      hasServiceKey: !!supabaseServiceKey,
       appUrl: appUrl
     });
 
-    if (!openaiApiKey || !supabaseUrl || !supabaseServiceKey) {
-      console.error('Missing required environment variables');
-      return new Response(
-        `<?xml version="1.0" encoding="UTF-8"?>
-        <Response>
-          <Say voice="alice">Hej! Tyvärr är AI-systemet inte konfigurerat korrekt. Kontakta support.</Say>
-          <Hangup/>
-        </Response>`,
-        {
-          headers: { ...corsHeaders, 'Content-Type': 'text/xml' },
-          status: 200,
-        }
-      );
+    if (!openaiApiKey) {
+      console.error('Missing OpenAI API key');
+      const twiml = `<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Say voice="alice">Hej! Tyvärr är AI-systemet inte konfigurerat korrekt. Kontakta support.</Say>
+  <Hangup/>
+</Response>`;
+      return res.status(200).type('text/xml').send(twiml);
     }
 
-    // Initialize Supabase client
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+    const { CallSid, From, CallStatus, SpeechResult, RecordingUrl } = req.body;
 
-    // Parse form data from Twilio webhook
-    const formData = await req.formData();
-    const webhookData: Partial<TwilioWebhookRequest> = {};
-    
-    for (const [key, value] of formData.entries()) {
-      webhookData[key as keyof TwilioWebhookRequest] = value.toString();
-    }
-
-    console.log('Twilio OpenAI webhook data:', webhookData);
-
-    const { CallSid, From, CallStatus, SpeechResult, RecordingUrl } = webhookData;
+    console.log('Twilio OpenAI webhook data:', req.body);
 
     // Handle different call states
     if (CallStatus === 'ringing' || CallStatus === 'in-progress') {
       // Initial call - start conversation
       if (!SpeechResult && !RecordingUrl) {
-        return new Response(
-          `<?xml version="1.0" encoding="UTF-8"?>
-          <Response>
-            <Say voice="alice">Hej! Jag heter Emma och ringer från Autocaller. Hur mår du idag?</Say>
-            <Gather input="speech" timeout="5" speechTimeout="2" action="${appUrl}/functions/v1/twilio-webhook-openai" method="POST">
-              <Say voice="alice">Säg något så kan vi prata.</Say>
-            </Gather>
-            <Say voice="alice">Jag hörde inget svar. Ha en bra dag!</Say>
-            <Hangup/>
-          </Response>`,
-          {
-            headers: { ...corsHeaders, 'Content-Type': 'text/xml' },
-            status: 200,
-          }
-        );
+        const twiml = `<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Say voice="alice">Hej! Jag heter Emma och ringer från Autocaller. Hur mår du idag?</Say>
+  <Gather input="speech" timeout="5" speechTimeout="2" action="${appUrl}/api/twilio-webhook-openai" method="POST">
+    <Say voice="alice">Säg något så kan vi prata.</Say>
+  </Gather>
+  <Say voice="alice">Jag hörde inget svar. Ha en bra dag!</Say>
+  <Hangup/>
+</Response>`;
+        return res.status(200).type('text/xml').send(twiml);
       }
 
       // Process speech input
@@ -115,20 +74,24 @@ Deno.serve(async (req: Request) => {
             throw new Error(`Failed to download audio: ${audioResponse.status}`);
           }
           
-          const audioBlob = await audioResponse.blob();
+          const audioBuffer = await audioResponse.arrayBuffer();
           
           // Create form data for Whisper API
-          const whisperFormData = new FormData();
-          whisperFormData.append('file', audioBlob, 'audio.wav');
-          whisperFormData.append('model', 'whisper-1');
-          whisperFormData.append('language', 'sv'); // Swedish
+          const formData = new FormData();
+          formData.append('file', Buffer.from(audioBuffer), {
+            filename: 'audio.wav',
+            contentType: 'audio/wav'
+          });
+          formData.append('model', 'whisper-1');
+          formData.append('language', 'sv'); // Swedish
           
           const whisperResponse = await fetch('https://api.openai.com/v1/audio/transcriptions', {
             method: 'POST',
             headers: {
               'Authorization': `Bearer ${openaiApiKey}`,
+              ...formData.getHeaders()
             },
-            body: whisperFormData,
+            body: formData,
           });
 
           if (!whisperResponse.ok) {
@@ -206,7 +169,7 @@ Deno.serve(async (req: Request) => {
               'Content-Type': 'application/json',
             },
             body: JSON.stringify({
-              model: 'gpt-4o-mini-tts',
+              model: 'tts-1',
               input: aiReply,
               voice: 'nova', // Female voice that works well for Swedish
               response_format: 'mp3',
@@ -217,21 +180,16 @@ Deno.serve(async (req: Request) => {
           if (!ttsResponse.ok) {
             console.error('OpenAI TTS error:', await ttsResponse.text());
             // Fallback to Twilio's built-in TTS
-            return new Response(
-              `<?xml version="1.0" encoding="UTF-8"?>
-              <Response>
-                <Say voice="alice">${aiReply}</Say>
-                <Gather input="speech" timeout="5" speechTimeout="2" action="${appUrl}/functions/v1/twilio-webhook-openai" method="POST">
-                  <Say voice="alice">Vad tycker du om det?</Say>
-                </Gather>
-                <Say voice="alice">Tack för ditt intresse. Ha en bra dag!</Say>
-                <Hangup/>
-              </Response>`,
-              {
-                headers: { ...corsHeaders, 'Content-Type': 'text/xml' },
-                status: 200,
-              }
-            );
+            const twiml = `<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Say voice="alice">${aiReply}</Say>
+  <Gather input="speech" timeout="5" speechTimeout="2" action="${appUrl}/api/twilio-webhook-openai" method="POST">
+    <Say voice="alice">Vad tycker du om det?</Say>
+  </Gather>
+  <Say voice="alice">Tack för ditt intresse. Ha en bra dag!</Say>
+  <Hangup/>
+</Response>`;
+            return res.status(200).type('text/xml').send(twiml);
           }
 
           // Get audio data
@@ -265,37 +223,28 @@ Deno.serve(async (req: Request) => {
           console.log('Audio uploaded and signed URL created:', signedUrlData.signedUrl);
 
           // Return TwiML with AI-generated audio
-          return new Response(
-            `<?xml version="1.0" encoding="UTF-8"?>
-            <Response>
-              <Play>${signedUrlData.signedUrl}</Play>
-              <Gather input="speech" timeout="5" speechTimeout="2" action="${appUrl}/functions/v1/twilio-webhook-openai" method="POST">
-                <Say voice="alice">Vad tycker du?</Say>
-              </Gather>
-              <Say voice="alice">Tack så mycket för ditt intresse. Vi hörs snart igen!</Say>
-              <Hangup/>
-            </Response>`,
-            {
-              headers: { ...corsHeaders, 'Content-Type': 'text/xml' },
-              status: 200,
-            }
-          );
+          const twiml = `<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Play>${signedUrlData.signedUrl}</Play>
+  <Gather input="speech" timeout="5" speechTimeout="2" action="${appUrl}/api/twilio-webhook-openai" method="POST">
+    <Say voice="alice">Vad tycker du?</Say>
+  </Gather>
+  <Say voice="alice">Tack så mycket för ditt intresse. Vi hörs snart igen!</Say>
+  <Hangup/>
+</Response>`;
+
+          return res.status(200).type('text/xml').send(twiml);
 
         } catch (error) {
           console.error('AI processing error:', error);
           
           // Fallback response
-          return new Response(
-            `<?xml version="1.0" encoding="UTF-8"?>
-            <Response>
-              <Say voice="alice">Förlåt, jag har tekniska problem just nu. Tack för ditt intresse och ha en bra dag!</Say>
-              <Hangup/>
-            </Response>`,
-            {
-              headers: { ...corsHeaders, 'Content-Type': 'text/xml' },
-              status: 200,
-            }
-          );
+          const twiml = `<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Say voice="alice">Förlåt, jag har tekniska problem just nu. Tack för ditt intresse och ha en bra dag!</Say>
+  <Hangup/>
+</Response>`;
+          return res.status(200).type('text/xml').send(twiml);
         }
       }
     }
@@ -303,37 +252,26 @@ Deno.serve(async (req: Request) => {
     // Handle call completion
     if (CallStatus === 'completed') {
       console.log(`OpenAI call ${CallSid} completed`);
-      return new Response('OK', {
-        headers: { ...corsHeaders, 'Content-Type': 'text/plain' },
-        status: 200,
-      });
+      return res.status(200).send('OK');
     }
 
     // Default response
-    return new Response(
-      `<?xml version="1.0" encoding="UTF-8"?>
-      <Response>
-        <Say voice="alice">Hej! Tack för att du svarade. Ha en bra dag!</Say>
-        <Hangup/>
-      </Response>`,
-      {
-        headers: { ...corsHeaders, 'Content-Type': 'text/xml' },
-        status: 200,
-      }
-    );
+    const twiml = `<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Say voice="alice">Hej! Tack för att du svarade. Ha en bra dag!</Say>
+  <Hangup/>
+</Response>`;
+
+    return res.status(200).type('text/xml').send(twiml);
 
   } catch (error) {
     console.error('OpenAI webhook error:', error);
-    return new Response(
-      `<?xml version="1.0" encoding="UTF-8"?>
-      <Response>
-        <Say voice="alice">Ett tekniskt fel uppstod. Vi ber om ursäkt. Ha en bra dag!</Say>
-        <Hangup/>
-      </Response>`,
-      {
-        headers: { ...corsHeaders, 'Content-Type': 'text/xml' },
-        status: 200,
-      }
-    );
+    
+    const twiml = `<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Say voice="alice">Ett tekniskt fel uppstod. Vi ber om ursäkt. Ha en bra dag!</Say>
+  <Hangup/>
+</Response>`;
+    return res.status(200).type('text/xml').send(twiml);
   }
-});
+}
