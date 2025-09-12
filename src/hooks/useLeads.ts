@@ -2,6 +2,11 @@ import { useState, useEffect } from 'react';
 import { Lead, CreateLeadRequest } from '../types/Lead';
 import { supabase } from '../lib/supabase';
 
+// Optional base URL for API in dev or when backend is hosted separately
+const API_BASE = (import.meta as any)?.env?.VITE_API_BASE_URL
+  ? String((import.meta as any).env.VITE_API_BASE_URL).replace(/\/$/, '')
+  : '';
+
 export function useLeads() {
   const [leads, setLeads] = useState<Lead[]>([]);
   const [loading, setLoading] = useState(true);
@@ -12,7 +17,7 @@ export function useLeads() {
       setLoading(true);
       setError(null);
       
-      const apiUrl = `/api/leads`;
+      const apiUrl = `${API_BASE}/api/leads`;
       const response = await fetch(apiUrl, {
         headers: {
           'Content-Type': 'application/json',
@@ -35,7 +40,7 @@ export function useLeads() {
   const createLead = async (leadData: CreateLeadRequest): Promise<Lead> => {
     try {
       setError(null);
-      const apiUrl = `/api/leads`;
+      const apiUrl = `${API_BASE}/api/leads`;
       const response = await fetch(apiUrl, {
         method: 'POST',
         headers: {
@@ -61,7 +66,7 @@ export function useLeads() {
 
   const initiateCallElevenLabs = async (leadId: string): Promise<{ success: boolean; message: string; leadName?: string; leadPhone?: string; callSid?: string; ttsProvider?: string }> => {
     try {
-      const apiUrl = `/api/call-elevenlabs/${leadId}`;
+      const apiUrl = `${API_BASE}/api/call-elevenlabs/${leadId}`;
       const response = await fetch(apiUrl, {
         method: 'POST',
         headers: {
@@ -90,7 +95,7 @@ export function useLeads() {
 
   const initiateCallOpenAI = async (leadId: string): Promise<{ success: boolean; message: string; leadName?: string; leadPhone?: string; callSid?: string; ttsProvider?: string }> => {
     try {
-      const apiUrl = `/api/call-openai/${leadId}`;
+      const apiUrl = `${API_BASE}/api/call-openai/${leadId}`;
       const response = await fetch(apiUrl, {
         method: 'POST',
         headers: {
@@ -119,7 +124,7 @@ export function useLeads() {
 
   const initiateTestCall = async (leadId: string): Promise<{ success: boolean; message: string; leadName?: string; leadPhone?: string; callSid?: string; callType?: string }> => {
     try {
-      const apiUrl = `/api/call-test/${leadId}`;
+      const apiUrl = `${API_BASE}/api/call-test/${leadId}`;
       const response = await fetch(apiUrl, {
         method: 'POST',
         headers: {
@@ -143,7 +148,7 @@ export function useLeads() {
 
   const initiateCall = async (leadId: string): Promise<{ success: boolean; message: string; leadName?: string; leadPhone?: string }> => {
     try {
-      const apiUrl = `/api/call/${leadId}`;
+      const apiUrl = `${API_BASE}/api/call/${leadId}`;
       const response = await fetch(apiUrl, {
         method: 'POST',
         headers: {
